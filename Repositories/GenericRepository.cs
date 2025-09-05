@@ -51,20 +51,35 @@ namespace WebApplication1.Repositories
             string tableName = GetTableName();
             string keyColumn = GetKeyColumnName()!;
             string keyProperty = GetKeyPropertyName()!;
-
+        
             StringBuilder query = new StringBuilder($"UPDATE {tableName} SET ");
+            var parameters = new DynamicParameters();
+        
             foreach (var prop in GetProperties(true))
             {
+                if (prop.Name == keyProperty || prop.Name == "DateCreated") continue;
                 string columnName = prop.GetCustomAttribute<ColumnAttribute>()?.Name ?? prop.Name;
+                var value = prop.GetValue(entity);
+        
+        
+                if (value is DateTime dt && dt < (DateTime)System.Data.SqlTypes.SqlDateTime.MinValue.Value)
+                {
+                    value = System.Data.SqlTypes.SqlDateTime.MinValue.Value;  
+                }
+        
                 query.Append($"{columnName} = @{prop.Name}, ");
+                parameters.Add($"@{prop.Name}", value);
             }
-            query.Length -= 2; // remove last comma
+        
+            query.Length -= 2;  // Remove last comma
             query.Append($" WHERE {keyColumn} = @{keyProperty}");
-
-            int rows = connection.Execute(query.ToString(), entity);
-            return rows == 1;
+        
+            var keyValue = typeof(T).GetProperty(keyProperty)?.GetValue(entity);
+            parameters.Add($"@{keyProperty}", keyValue);
+        
+            int rowsAffected = connection.Execute(query.ToString(), parameters);
+            return rowsAffected == 1;
         }
-
         public bool Delete(T entity)
         {
             using IDbConnection connection = new SqlConnection(_connectionString);
